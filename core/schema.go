@@ -26,11 +26,11 @@ type jsonSchemaObject struct {
 	Schema map[string]any `json:"schema"`
 }
 
-// New builds a strict JSON schema from a struct type.
+// NewSchema builds a strict JSON schema from a struct type.
 //
 // name identifies the schema in provider requests, and v must be a struct value
 // or pointer to a struct value.
-func New(name string, v any) (Schema, error) {
+func NewSchema(name string, v any) (Schema, error) {
 	if name == "" {
 		return Schema{}, errors.New("schema name must not be empty")
 	}

@@ -34,14 +34,10 @@ type Option func(*Adapter)
 //
 // Preferred usage is to use core and add this adapter there.
 //
-// If apiKey is empty, New reads ANTHROPIC_API_KEY and then CLAUDE_API_KEY.
-func New(apiKey, model string, opts ...Option) *Adapter {
-	if strings.TrimSpace(apiKey) == "" {
-		apiKey = resolveAPIKey()
-	}
-
+// If no API key is provided via options, New reads ANTHROPIC_API_KEY and then CLAUDE_API_KEY.
+func New(model string, opts ...Option) *Adapter {
 	adapter := &Adapter{
-		APIKey:     strings.TrimSpace(apiKey),
+		APIKey:     resolveAPIKey(),
 		Model:      strings.TrimSpace(model),
 		BaseURL:    defaultBaseURL,
 		HTTPClient: &http.Client{Timeout: defaultHTTPTimeout},
@@ -55,6 +51,16 @@ func New(apiKey, model string, opts ...Option) *Adapter {
 	}
 
 	return adapter
+}
+
+// WithAPIKey sets the API key used by the adapter.
+func WithAPIKey(apiKey string) Option {
+	return func(adapter *Adapter) {
+		if strings.TrimSpace(apiKey) == "" {
+			return
+		}
+		adapter.APIKey = strings.TrimSpace(apiKey)
+	}
 }
 
 // WithBaseURL sets the API base URL used by the adapter.
@@ -116,7 +122,7 @@ func (a *Adapter) validate() error {
 		a.APIKey = resolveAPIKey()
 	}
 	if strings.TrimSpace(a.APIKey) == "" {
-		return errors.New("claude: API key is required (set ANTHROPIC_API_KEY/CLAUDE_API_KEY or pass apiKey)")
+		return errors.New("claude: API key is required (set ANTHROPIC_API_KEY/CLAUDE_API_KEY or use claude.WithAPIKey)")
 	}
 
 	if strings.TrimSpace(a.Model) == "" {

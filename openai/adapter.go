@@ -34,14 +34,10 @@ type Option func(*Adapter)
 //
 // Preferred usage is to use core and add this adapter there.
 //
-// If apiKey is empty, New reads OPENAI_API_KEY from the environment.
-func New(apiKey, model string, opts ...Option) *Adapter {
-	if strings.TrimSpace(apiKey) == "" {
-		apiKey = strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
-	}
-
+// If no API key is provided via options, New reads OPENAI_API_KEY from the environment.
+func New(model string, opts ...Option) *Adapter {
 	adapter := &Adapter{
-		APIKey:     strings.TrimSpace(apiKey),
+		APIKey:     strings.TrimSpace(os.Getenv("OPENAI_API_KEY")),
 		Model:      strings.TrimSpace(model),
 		BaseURL:    defaultBaseURL,
 		HTTPClient: &http.Client{Timeout: defaultHTTPTimeout},
@@ -55,6 +51,16 @@ func New(apiKey, model string, opts ...Option) *Adapter {
 	}
 
 	return adapter
+}
+
+// WithAPIKey sets the API key used by the adapter.
+func WithAPIKey(apiKey string) Option {
+	return func(adapter *Adapter) {
+		if strings.TrimSpace(apiKey) == "" {
+			return
+		}
+		adapter.APIKey = strings.TrimSpace(apiKey)
+	}
 }
 
 // WithBaseURL sets the API base URL used by the adapter.
@@ -106,7 +112,7 @@ func (a *Adapter) validate() error {
 		a.APIKey = strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
 	}
 	if strings.TrimSpace(a.APIKey) == "" {
-		return errors.New("openai: API key is required (set OPENAI_API_KEY or pass apiKey)")
+		return errors.New("openai: API key is required (set OPENAI_API_KEY or use openai.WithAPIKey)")
 	}
 
 	if strings.TrimSpace(a.Model) == "" {

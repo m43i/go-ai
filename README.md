@@ -46,7 +46,7 @@ import (
 )
 
 func main() {
-	adapter := openai.New("", "gpt-4o") // reads OPENAI_API_KEY from env
+	adapter := openai.New("gpt-4o") // reads OPENAI_API_KEY from env
 
 	result, err := core.Chat(context.Background(), adapter, &core.ChatParams{
 		Messages: []core.MessageUnion{
@@ -66,7 +66,7 @@ func main() {
 ```go
 import "github.com/m43i/go-ai/claude"
 
-adapter := claude.New("", "claude-sonnet-4-20250514") // reads ANTHROPIC_API_KEY from env
+adapter := claude.New("claude-sonnet-4-20250514") // reads ANTHROPIC_API_KEY from env
 
 result, err := core.Chat(context.Background(), adapter, &core.ChatParams{
 	Messages: []core.MessageUnion{
@@ -130,32 +130,77 @@ result, err := core.Chat(context.Background(), adapter, &core.ChatParams{
 
 ### Client Tools
 
-Client tools are not auto-executed. Instead, the adapter returns the tool calls so your application can handle them.
+Client tools are not auto-executed. Instead, the adapter returns pending tool calls so your application can run them, append `ToolResultMessagePart` messages, and continue the loop.
 
 ```go
-result, err := core.Chat(context.Background(), adapter, &core.ChatParams{
-	Messages: []core.MessageUnion{
-		core.TextMessagePart{Role: core.RoleUser, Content: "Search for recent Go releases"},
-	},
-	Tools: []core.ToolUnion{
-		core.ClientTool{
-			Name:        "web_search",
-			Description: "Search the web",
-			Parameters: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"query": map[string]any{"type": "string"},
-				},
-				"required": []string{"query"},
+tools := []core.ToolUnion{
+	core.ClientTool{
+		Name:        "web_search",
+		Description: "Search the web",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"query": map[string]any{"type": "string"},
 			},
+			"required": []string{"query"},
 		},
 	},
-})
-
-// result.ToolCalls contains the pending calls for you to execute
-for _, call := range result.ToolCalls {
-	fmt.Printf("Tool: %s, Args: %v\n", call.Name, call.Arguments)
+	core.ClientTool{
+		Name:        "ask_client",
+		Description: "Hand off a question to the client application/user",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"question": map[string]any{"type": "string"},
+			},
+			"required": []string{"question"},
+		},
+	},
 }
+
+conversation := []core.MessageUnion{
+	core.TextMessagePart{Role: core.RoleUser, Content: "Find the latest Go release and ask me if I want details."},
+}
+
+result, err := core.Chat(context.Background(), adapter, &core.ChatParams{
+	Messages: conversation,
+	Tools:    tools,
+})
+if err != nil {
+	panic(err)
+}
+
+for len(result.ToolCalls) > 0 {
+	conversation = append([]core.MessageUnion(nil), result.Messages...)
+
+	for _, call := range result.ToolCalls {
+		toolOutput := `{"error":"unknown tool"}`
+
+		switch call.Name {
+		case "web_search":
+			toolOutput = `{"results":["Go 1.25.6 released"]}`
+		case "ask_client":
+			toolOutput = `{"answer":"Yes, show me the highlights."}`
+		}
+
+		conversation = append(conversation, core.ToolResultMessagePart{
+			Role:       core.RoleToolResult,
+			ToolCallID: call.ID,
+			Name:       call.Name,
+			Content:    toolOutput,
+		})
+	}
+
+	result, err = core.Chat(context.Background(), adapter, &core.ChatParams{
+		Messages: conversation,
+		Tools:    tools,
+	})
+	if err != nil {
+		panic(err)
+	}
+}
+
+fmt.Println(result.Text)
 ```
 
 ### Structured Output
@@ -169,7 +214,7 @@ type Sentiment struct {
 	Reasoning  string  `json:"reasoning"`
 }
 
-schema, err := core.New("sentiment_analysis", Sentiment{})
+schema, err := core.NewSchema("sentiment_analysis", Sentiment{})
 if err != nil {
 	panic(err)
 }
@@ -229,7 +274,7 @@ core.ImagePart{
 ### Embeddings
 
 ```go
-adapter := openai.New("", "text-embedding-3-small")
+adapter := openai.New("text-embedding-3-small")
 
 // Single embedding
 result, err := core.Embed(context.Background(), adapter, &core.EmbedParams{
@@ -240,16 +285,12 @@ result, err := core.Embed(context.Background(), adapter, &core.EmbedParams{
 manyResult, err := core.EmbedMany(context.Background(), adapter, &core.EmbedManyParams{
 	Inputs: []string{"Hello world", "Goodbye world"},
 })
-
-// Compare with cosine similarity
-similarity, err := core.CosineSimilarity(manyResult.Embeddings[0], manyResult.Embeddings[1])
-fmt.Printf("Similarity: %.4f\n", similarity)
 ```
 
 ### Image Generation
 
 ```go
-adapter := openai.New("", "gpt-image-1")
+adapter := openai.New("gpt-image-1")
 
 result, err := core.GenerateImage(context.Background(), adapter, &core.ImageParams{
 	Prompt: "A serene mountain landscape at sunset",
@@ -265,7 +306,7 @@ for _, img := range result.Images {
 ### Audio Transcription
 
 ```go
-adapter := openai.New("", "whisper-1")
+adapter := openai.New("whisper-1")
 
 audioData, _ := os.ReadFile("recording.mp3")
 
@@ -300,14 +341,16 @@ Both adapters support functional options:
 
 ```go
 // OpenAI
-adapter := openai.New("sk-...", "gpt-4o",
+adapter := openai.New("gpt-4o",
+	openai.WithAPIKey("sk-..."),
 	openai.WithBaseURL("https://custom-endpoint.example.com/v1"),
 	openai.WithTimeout(2 * time.Minute),
 	openai.WithHTTPClient(customClient),
 )
 
 // Claude
-adapter := claude.New("sk-ant-...", "claude-sonnet-4-20250514",
+adapter := claude.New("claude-sonnet-4-20250514",
+	claude.WithAPIKey("sk-ant-..."),
 	claude.WithBaseURL("https://custom-endpoint.example.com/v1"),
 	claude.WithTimeout(2 * time.Minute),
 	claude.WithHTTPClient(customClient),

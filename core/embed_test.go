@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"math"
 	"testing"
 )
 
@@ -64,33 +63,5 @@ func TestEmbedMany(t *testing.T) {
 	}
 	if result != expected {
 		t.Fatalf("expected result pointer %#v, got %#v", expected, result)
-	}
-}
-
-func TestCosineSimilarity(t *testing.T) {
-	value, err := CosineSimilarity([]float64{1, 2, 3}, []float64{1, 2, 3})
-	if err != nil {
-		t.Fatalf("cosine similarity returned error: %v", err)
-	}
-
-	if math.Abs(value-1) > 1e-9 {
-		t.Fatalf("expected cosine similarity 1, got %f", value)
-	}
-}
-
-func TestCosineSimilarityErrors(t *testing.T) {
-	_, err := CosineSimilarity([]float64{}, []float64{1})
-	if err == nil {
-		t.Fatal("expected error for empty vector")
-	}
-
-	_, err = CosineSimilarity([]float64{1}, []float64{1, 2})
-	if err == nil {
-		t.Fatal("expected error for mismatched dimensions")
-	}
-
-	_, err = CosineSimilarity([]float64{0, 0}, []float64{1, 2})
-	if err == nil {
-		t.Fatal("expected error for zero vector")
 	}
 }

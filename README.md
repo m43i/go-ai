@@ -4,7 +4,7 @@ A provider-agnostic AI SDK for Go, inspired by [TanStack AI](https://tanstack.co
 
 ## Features
 
-- **Provider-agnostic** -- swap between OpenAI and Claude with a single line change
+- **Provider-agnostic** -- swap between OpenAI, Claude, and Ollama with a single line change
 - **Chat completions** -- streaming and non-streaming
 - **Tool calling** -- server tools (auto-executed in an agentic loop) and client tools (returned to the caller)
 - **Structured output** -- build strict JSON schemas from Go structs, decode responses with generics
@@ -21,6 +21,7 @@ A provider-agnostic AI SDK for Go, inspired by [TanStack AI](https://tanstack.co
 |----------|------|-----------|-------|--------------------|------------|--------|---------------|
 | OpenAI   | Yes  | Yes       | Yes   | Yes                | Yes        | Yes    | Yes           |
 | Claude   | Yes  | Yes       | Yes   | Yes                | --         | --     | --            |
+| Ollama   | Yes  | Yes       | Yes   | Yes                | Yes        | --     | --            |
 
 ## Installation
 
@@ -67,6 +68,20 @@ func main() {
 import "github.com/m43i/go-ai/claude"
 
 adapter := claude.New("claude-sonnet-4-20250514") // reads ANTHROPIC_API_KEY from env
+
+result, err := core.Chat(context.Background(), adapter, &core.ChatParams{
+	Messages: []core.MessageUnion{
+		core.TextMessagePart{Role: core.RoleUser, Content: "Explain quantum computing in one paragraph."},
+	},
+})
+```
+
+### Using Ollama
+
+```go
+import "github.com/m43i/go-ai/ollama"
+
+adapter := ollama.New("llama3.2") // reads OLLAMA_HOST, defaults to http://localhost:11434
 
 result, err := core.Chat(context.Background(), adapter, &core.ChatParams{
 	Messages: []core.MessageUnion{
@@ -337,7 +352,7 @@ fmt.Println("Answer:", result.Text)
 
 ## Adapter Configuration
 
-Both adapters support functional options:
+All adapters support functional options:
 
 ```go
 // OpenAI
@@ -356,12 +371,21 @@ adapter := claude.New("claude-sonnet-4-20250514",
 	claude.WithHTTPClient(customClient),
 	claude.WithAnthropicVersion("2023-06-01"),
 )
+
+// Ollama
+adapter := ollama.New("llama3.2",
+	ollama.WithBaseURL("http://localhost:11434"),
+	ollama.WithTimeout(2 * time.Minute),
+	ollama.WithHTTPClient(customClient),
+	ollama.WithAPIKey("optional-remote-token"),
+)
 ```
 
 API keys are resolved automatically from environment variables when not provided:
 
 - **OpenAI**: `OPENAI_API_KEY`
 - **Claude**: `ANTHROPIC_API_KEY`, then `CLAUDE_API_KEY`
+- **Ollama**: `OLLAMA_HOST` (base URL), optional `OLLAMA_API_KEY`
 
 ## Core Interfaces
 

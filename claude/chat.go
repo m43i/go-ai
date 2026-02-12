@@ -28,7 +28,7 @@ func (a *Adapter) Chat(ctx context.Context, params *core.ChatParams) (*core.Chat
 	conversation := cloneCoreMessages(params)
 	reasoningParts := make([]string, 0, 4)
 
-	for i := 0; i < maxLoopCount; i++ {
+	for range maxLoopCount {
 		request := requestTemplate
 		request.Messages = messages
 
@@ -178,7 +178,7 @@ func (a *Adapter) ChatStream(ctx context.Context, params *core.ChatParams) (<-ch
 		scanner := bufio.NewScanner(httpResp.Body)
 		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 
-		content := ""
+		var content strings.Builder
 		reasoningParts := make([]string, 0, 4)
 		var usage *core.Usage
 
@@ -210,12 +210,12 @@ func (a *Adapter) ChatStream(ctx context.Context, params *core.ChatParams) (<-ch
 
 			if event.Type == "content_block_delta" && event.Delta != nil {
 				if event.Delta.Type == "text_delta" && event.Delta.Text != "" {
-					content += event.Delta.Text
+					content.WriteString(event.Delta.Text)
 					out <- core.StreamChunk{
 						Type:    core.StreamChunkContent,
 						Role:    core.RoleAssistant,
 						Delta:   event.Delta.Text,
-						Content: content,
+						Content: content.String(),
 					}
 				} else if event.Delta.Type == "thinking_delta" {
 					reasoningDelta := strings.TrimSpace(nonEmpty(event.Delta.Thinking, event.Delta.Text))

@@ -28,7 +28,7 @@ func (a *Adapter) Chat(ctx context.Context, params *core.ChatParams) (*core.Chat
 	conversation := cloneCoreMessages(params)
 	reasoningParts := make([]string, 0, 4)
 
-	for i := 0; i < maxLoopCount; i++ {
+	for range maxLoopCount {
 		request := requestTemplate
 		request.Messages = messages
 		stream := false

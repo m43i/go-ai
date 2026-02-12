@@ -102,17 +102,28 @@ if err != nil {
 	panic(err)
 }
 
+finalContent := ""
+finalReasoning := ""
+
 for chunk := range chunks {
 	switch chunk.Type {
+	case core.StreamChunkReasoning:
+		fmt.Print(chunk.Delta) // incremental reasoning text
+		finalReasoning = chunk.Reasoning // full reasoning so far
 	case core.StreamChunkContent:
-		fmt.Print(chunk.Delta)
+		fmt.Print(chunk.Delta) // incremental content text
+		finalContent = chunk.Content // full content so far
 	case core.StreamChunkDone:
 		fmt.Println("\n-- done --")
+		fmt.Println("final content:", finalContent)
+		fmt.Println("final reasoning:", finalReasoning)
 	case core.StreamChunkError:
 		fmt.Println("error:", chunk.Error)
 	}
 }
 ```
+
+`chunk.Delta` is always the incremental token delta for the chunk type. `chunk.Content` and `chunk.Reasoning` are accumulated snapshots up to that chunk.
 
 ### Server Tools (Agentic Loop)
 

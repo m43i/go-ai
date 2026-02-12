@@ -179,8 +179,8 @@ func parseStreamChoiceRaw(raw json.RawMessage) (string, error) {
 }
 
 func parseStreamDeltaReasoning(delta streamDelta) string {
-	if strings.TrimSpace(delta.ReasoningContent) != "" {
-		return strings.TrimSpace(delta.ReasoningContent)
+	if delta.ReasoningContent != "" {
+		return delta.ReasoningContent
 	}
 	if len(delta.Content) == 0 {
 		return ""
@@ -198,7 +198,10 @@ func parseStreamChoiceReasoning(choice streamChoice) string {
 	if reasoning := parseStreamDeltaReasoning(choice.Delta); reasoning != "" {
 		return reasoning
 	}
-	return strings.TrimSpace(choice.Reasoning)
+	if choice.Reasoning != "" {
+		return choice.Reasoning
+	}
+	return ""
 }
 
 func parseStreamChoiceRawReasoning(raw json.RawMessage) (string, error) {

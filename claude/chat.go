@@ -179,7 +179,7 @@ func (a *Adapter) ChatStream(ctx context.Context, params *core.ChatParams) (<-ch
 		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 
 		var content strings.Builder
-		reasoningParts := make([]string, 0, 4)
+		reasoning := ""
 		var usage *core.Usage
 
 		for scanner.Scan() {
@@ -218,22 +218,25 @@ func (a *Adapter) ChatStream(ctx context.Context, params *core.ChatParams) (<-ch
 						Content: content.String(),
 					}
 				} else if event.Delta.Type == "thinking_delta" {
-					reasoningDelta := strings.TrimSpace(nonEmpty(event.Delta.Thinking, event.Delta.Text))
-					before := len(reasoningParts)
-					reasoningParts = appendReasoningPart(reasoningParts, reasoningDelta)
-					if len(reasoningParts) > before {
+					incomingReasoning := event.Delta.Thinking
+					if incomingReasoning == "" {
+						incomingReasoning = event.Delta.Text
+					}
+					nextReasoning, reasoningDelta := appendStreamSegment(reasoning, incomingReasoning)
+					reasoning = nextReasoning
+					if reasoningDelta != "" {
 						out <- core.StreamChunk{
 							Type:      core.StreamChunkReasoning,
 							Role:      core.RoleAssistant,
 							Delta:     reasoningDelta,
-							Reasoning: joinReasoningParts(reasoningParts),
+							Reasoning: reasoning,
 						}
 					}
 				}
 			}
 
 			if event.Type == "message_stop" {
-				out <- core.StreamChunk{Type: core.StreamChunkDone, FinishReason: "stop", Reasoning: joinReasoningParts(reasoningParts), Usage: usage}
+				out <- core.StreamChunk{Type: core.StreamChunkDone, FinishReason: "stop", Reasoning: reasoning, Usage: usage}
 				return
 			}
 		}
@@ -243,7 +246,7 @@ func (a *Adapter) ChatStream(ctx context.Context, params *core.ChatParams) (<-ch
 			return
 		}
 
-		out <- core.StreamChunk{Type: core.StreamChunkDone, FinishReason: "stop", Reasoning: joinReasoningParts(reasoningParts), Usage: usage}
+		out <- core.StreamChunk{Type: core.StreamChunkDone, FinishReason: "stop", Reasoning: reasoning, Usage: usage}
 	}()
 
 	return out, nil
@@ -443,4 +446,19 @@ func nonEmpty(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func appendStreamSegment(current, incoming string) (next string, delta string) {
+	if incoming == "" {
+		return current, ""
+	}
+
+	if strings.HasPrefix(incoming, current) {
+		return incoming, incoming[len(current):]
+	}
+	if strings.HasPrefix(current, incoming) {
+		return current, ""
+	}
+
+	return current + incoming, incoming
 }

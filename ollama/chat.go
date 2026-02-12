@@ -206,14 +206,14 @@ func (a *Adapter) ChatStream(ctx context.Context, params *core.ChatParams) (<-ch
 
 			usage = toCoreChatUsage(&event)
 
-			nextReasoning, reasoningDelta := appendStreamSegment(reasoning, strings.TrimSpace(event.Message.Thinking))
+			nextReasoning, reasoningDelta := appendStreamSegment(reasoning, event.Message.Thinking)
 			reasoning = nextReasoning
 			if reasoningDelta != "" {
 				out <- core.StreamChunk{
 					Type:      core.StreamChunkReasoning,
 					Role:      core.RoleAssistant,
 					Delta:     reasoningDelta,
-					Reasoning: strings.TrimSpace(reasoning),
+					Reasoning: reasoning,
 				}
 			}
 
@@ -233,7 +233,7 @@ func (a *Adapter) ChatStream(ctx context.Context, params *core.ChatParams) (<-ch
 				out <- core.StreamChunk{
 					Type:         core.StreamChunkDone,
 					FinishReason: finishReason,
-					Reasoning:    strings.TrimSpace(reasoning),
+					Reasoning:    reasoning,
 					Usage:        usage,
 				}
 				return
@@ -248,7 +248,7 @@ func (a *Adapter) ChatStream(ctx context.Context, params *core.ChatParams) (<-ch
 		out <- core.StreamChunk{
 			Type:         core.StreamChunkDone,
 			FinishReason: nonEmpty(finishReason, "stop"),
-			Reasoning:    strings.TrimSpace(reasoning),
+			Reasoning:    reasoning,
 			Usage:        usage,
 		}
 	}()

@@ -205,7 +205,7 @@ func (a *Adapter) ChatStream(ctx context.Context, params *core.ChatParams) (<-ch
 		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 
 		var content strings.Builder
-		reasoningParts := make([]string, 0, 4)
+		reasoning := ""
 		finishReason := ""
 		var usage *core.Usage
 
@@ -220,7 +220,7 @@ func (a *Adapter) ChatStream(ctx context.Context, params *core.ChatParams) (<-ch
 				out <- core.StreamChunk{
 					Type:         core.StreamChunkDone,
 					FinishReason: nonEmpty(finishReason, "stop"),
-					Reasoning:    joinReasoningParts(reasoningParts),
+					Reasoning:    reasoning,
 					Usage:        usage,
 				}
 				return
@@ -246,23 +246,24 @@ func (a *Adapter) ChatStream(ctx context.Context, params *core.ChatParams) (<-ch
 					finishReason = choice.FinishReason
 				}
 
-				reasoning := parseStreamChoiceReasoning(choice)
-				if reasoning == "" && idx < len(rawEvent.Choices) {
+				incomingReasoning := parseStreamChoiceReasoning(choice)
+				if incomingReasoning == "" && idx < len(rawEvent.Choices) {
 					rawReasoning, rawErr := parseStreamChoiceRawReasoning(rawEvent.Choices[idx])
 					if rawErr != nil {
 						out <- core.StreamChunk{Type: core.StreamChunkError, Error: fmt.Sprintf("openai: decode raw stream choice reasoning: %v", rawErr)}
 						return
 					}
-					reasoning = rawReasoning
+					incomingReasoning = rawReasoning
 				}
-				before := len(reasoningParts)
-				reasoningParts = appendReasoningPart(reasoningParts, reasoning)
-				if len(reasoningParts) > before {
+
+				nextReasoning, reasoningDelta := appendStreamSegment(reasoning, incomingReasoning)
+				reasoning = nextReasoning
+				if reasoningDelta != "" {
 					out <- core.StreamChunk{
 						Type:      core.StreamChunkReasoning,
 						Role:      core.RoleAssistant,
-						Delta:     strings.TrimSpace(reasoning),
-						Reasoning: joinReasoningParts(reasoningParts),
+						Delta:     reasoningDelta,
+						Reasoning: reasoning,
 					}
 				}
 
@@ -302,7 +303,7 @@ func (a *Adapter) ChatStream(ctx context.Context, params *core.ChatParams) (<-ch
 		out <- core.StreamChunk{
 			Type:         core.StreamChunkDone,
 			FinishReason: nonEmpty(finishReason, "stop"),
-			Reasoning:    joinReasoningParts(reasoningParts),
+			Reasoning:    reasoning,
 			Usage:        usage,
 		}
 	}()
@@ -521,4 +522,19 @@ func nonEmpty(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func appendStreamSegment(current, incoming string) (next string, delta string) {
+	if incoming == "" {
+		return current, ""
+	}
+
+	if strings.HasPrefix(incoming, current) {
+		return incoming, incoming[len(current):]
+	}
+	if strings.HasPrefix(current, incoming) {
+		return current, ""
+	}
+
+	return current + incoming, incoming
 }

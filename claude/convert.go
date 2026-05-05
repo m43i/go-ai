@@ -1,7 +1,6 @@
 package claude
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -15,7 +14,13 @@ func toMessagesAndSystem(params *core.ChatParams) ([]message, string, error) {
 	}
 
 	messages := make([]message, 0, len(params.Messages))
-	systemParts := make([]string, 0)
+	systemParts := make([]string, 0, len(params.SystemPrompts)+2)
+	for _, prompt := range params.SystemPrompts {
+		prompt = strings.TrimSpace(prompt)
+		if prompt != "" {
+			systemParts = append(systemParts, prompt)
+		}
+	}
 
 	for i, union := range params.Messages {
 		msg, systemText, err := toMessage(union)
@@ -142,12 +147,12 @@ func toContentBlock(part core.ContentPart) (contentBlock, error) {
 		return imageBlock(typed.Source)
 
 	case core.AudioPart:
-		return audioBlock(typed.Source)
+		return contentBlock{}, errors.New("claude: audio content is not supported by the Messages API")
 	case *core.AudioPart:
 		if typed == nil {
 			return contentBlock{}, errors.New("audio part is nil")
 		}
-		return audioBlock(typed.Source)
+		return contentBlock{}, errors.New("claude: audio content is not supported by the Messages API")
 
 	case core.DocumentPart:
 		return documentBlock(typed.Source)
@@ -170,21 +175,11 @@ func imageBlock(source core.Source) (contentBlock, error) {
 	if err != nil {
 		return contentBlock{}, err
 	}
+	if ms.Type == "base64" && !isClaudeImageMimeType(ms.MediaType) {
+		return contentBlock{}, fmt.Errorf("unsupported image mime type %q", ms.MediaType)
+	}
 
 	return contentBlock{Type: "image", Source: ms}, nil
-}
-
-func audioBlock(source core.Source) (contentBlock, error) {
-	if source == nil {
-		return contentBlock{}, errors.New("audio source is required")
-	}
-
-	ms, err := mediaSourceFromSource(source)
-	if err != nil {
-		return contentBlock{}, err
-	}
-
-	return contentBlock{Type: "audio", Source: ms}, nil
 }
 
 func documentBlock(source core.Source) (contentBlock, error) {
@@ -196,8 +191,23 @@ func documentBlock(source core.Source) (contentBlock, error) {
 	if err != nil {
 		return contentBlock{}, err
 	}
+	if ms.Type == "base64" && ms.MediaType != "application/pdf" {
+		return contentBlock{}, fmt.Errorf("unsupported document mime type %q", ms.MediaType)
+	}
+	if ms.Type == "text" && ms.MediaType != "text/plain" {
+		return contentBlock{}, fmt.Errorf("unsupported document mime type %q", ms.MediaType)
+	}
 
 	return contentBlock{Type: "document", Source: ms}, nil
+}
+
+func isClaudeImageMimeType(mimeType string) bool {
+	switch mimeType {
+	case "image/jpeg", "image/png", "image/gif", "image/webp":
+		return true
+	default:
+		return false
+	}
 }
 
 func mediaSourceFromSource(source core.Source) (*mediaSource, error) {
@@ -240,6 +250,9 @@ func dataMediaSource(source core.DataSource) (*mediaSource, error) {
 	mimeType := strings.TrimSpace(source.MimeType)
 	if mimeType == "" {
 		return nil, errors.New("source mime type is required")
+	}
+	if mimeType == "text/plain" {
+		return &mediaSource{Type: "text", MediaType: mimeType, Data: data}, nil
 	}
 
 	return &mediaSource{Type: "base64", MediaType: mimeType, Data: data}, nil
@@ -450,18 +463,41 @@ func assertNewToolName(seen map[string]struct{}, name string) error {
 	return nil
 }
 
-func maxTokens(params *core.ChatParams) *int64 {
+func maxTokens(params *core.ChatParams) int64 {
+	base := int64(1024)
 	if params == nil {
-		return nil
+		return base
 	}
-	if params.MaxOutputTokens != nil && *params.MaxOutputTokens > 0 {
-		return params.MaxOutputTokens
+	if params.MaxTokens != nil && *params.MaxTokens > 0 {
+		base = *params.MaxTokens
+	} else if params.MaxOutputTokens != nil && *params.MaxOutputTokens > 0 {
+		base = *params.MaxOutputTokens
+	} else if params.MaxLength > 0 {
+		base = params.MaxLength
 	}
-	if params.MaxLength > 0 {
-		value := params.MaxLength
-		return &value
+
+	if budget := thinkingBudgetTokens(params.ModelOptions); budget >= base {
+		return budget + 1
 	}
-	return nil
+	return base
+}
+
+func thinkingBudgetTokens(modelOptions map[string]any) int64 {
+	thinking, ok := modelOptions["thinking"].(map[string]any)
+	if !ok || thinking["type"] != "enabled" {
+		return 0
+	}
+
+	switch budget := thinking["budget_tokens"].(type) {
+	case int:
+		return int64(budget)
+	case int64:
+		return budget
+	case float64:
+		return int64(budget)
+	default:
+		return 0
+	}
 }
 
 func temperature(params *core.ChatParams) *float64 {
@@ -469,6 +505,44 @@ func temperature(params *core.ChatParams) *float64 {
 		return nil
 	}
 	return params.Temperature
+}
+
+func topP(params *core.ChatParams) *float64 {
+	if params == nil {
+		return nil
+	}
+	return params.TopP
+}
+
+func metadata(params *core.ChatParams) map[string]any {
+	if params == nil || len(params.Metadata) == 0 {
+		return nil
+	}
+	return params.Metadata
+}
+
+func modelOptions(params *core.ChatParams) map[string]any {
+	if params == nil || len(params.ModelOptions) == 0 {
+		return nil
+	}
+	return params.ModelOptions
+}
+
+func outputConfig(params *core.ChatParams) map[string]any {
+	if params == nil || params.Output == nil || params.Output.Schema == nil {
+		return nil
+	}
+
+	config := map[string]any{
+		"format": map[string]any{
+			"type":   "json_schema",
+			"schema": params.Output.Schema,
+		},
+	}
+	if effort := strings.TrimSpace(params.ReasoningEffort); effort != "" {
+		config["effort"] = effort
+	}
+	return config
 }
 
 func maxLoops(params *core.ChatParams, hasServerTools bool) int {
@@ -479,17 +553,4 @@ func maxLoops(params *core.ChatParams, hasServerTools bool) int {
 		return int(params.MaxAgenticLoops)
 	}
 	return defaultMaxAgenticLoops
-}
-
-func outputInstruction(schema *core.Schema) string {
-	if schema == nil || schema.Schema == nil {
-		return ""
-	}
-
-	b, err := json.MarshalIndent(schema.Schema, "", "  ")
-	if err != nil {
-		return ""
-	}
-
-	return "Return only valid JSON that strictly matches this JSON Schema:\n" + string(b)
 }

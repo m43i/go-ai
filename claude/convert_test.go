@@ -354,18 +354,12 @@ func TestAudioBlockURL(t *testing.T) {
 	t.Parallel()
 
 	part := core.AudioPart{Source: core.URLSource{URL: "https://example.com/audio.mp3"}}
-	result, err := toContentBlock(part)
-	if err != nil {
+	_, err := toContentBlock(part)
+	if err == nil {
+		t.Fatal("expected error for unsupported audio content")
+	}
+	if !strings.Contains(err.Error(), "audio content is not supported") {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.Type != "audio" {
-		t.Fatalf("unexpected type: %q", result.Type)
-	}
-	if result.Source == nil || result.Source.Type != "url" {
-		t.Fatalf("unexpected source: %#v", result.Source)
-	}
-	if result.Source.URL != "https://example.com/audio.mp3" {
-		t.Fatalf("unexpected URL: %q", result.Source.URL)
 	}
 }
 
@@ -375,21 +369,12 @@ func TestAudioBlockBase64(t *testing.T) {
 	part := core.AudioPart{
 		Source: core.DataSource{Data: "YXVkaW8=", MimeType: "audio/wav"},
 	}
-	result, err := toContentBlock(part)
-	if err != nil {
+	_, err := toContentBlock(part)
+	if err == nil {
+		t.Fatal("expected error for unsupported audio content")
+	}
+	if !strings.Contains(err.Error(), "audio content is not supported") {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.Type != "audio" {
-		t.Fatalf("unexpected type: %q", result.Type)
-	}
-	if result.Source.Type != "base64" {
-		t.Fatalf("unexpected source type: %q", result.Source.Type)
-	}
-	if result.Source.Data != "YXVkaW8=" {
-		t.Fatalf("unexpected data: %q", result.Source.Data)
-	}
-	if result.Source.MediaType != "audio/wav" {
-		t.Fatalf("unexpected media type: %q", result.Source.MediaType)
 	}
 }
 
@@ -401,7 +386,7 @@ func TestAudioBlockNilSource(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for nil audio source")
 	}
-	if !strings.Contains(err.Error(), "audio source is required") {
+	if !strings.Contains(err.Error(), "audio content is not supported") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -453,6 +438,27 @@ func TestDocumentBlockBase64(t *testing.T) {
 		t.Fatalf("unexpected source type: %q", result.Source.Type)
 	}
 	if result.Source.MediaType != "application/pdf" {
+		t.Fatalf("unexpected media type: %q", result.Source.MediaType)
+	}
+}
+
+func TestDocumentBlockPlainText(t *testing.T) {
+	t.Parallel()
+
+	part := core.DocumentPart{
+		Source: core.DataSource{Data: "hello", MimeType: "text/plain"},
+	}
+	result, err := toContentBlock(part)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Type != "document" {
+		t.Fatalf("unexpected type: %q", result.Type)
+	}
+	if result.Source.Type != "text" {
+		t.Fatalf("unexpected source type: %q", result.Source.Type)
+	}
+	if result.Source.MediaType != "text/plain" {
 		t.Fatalf("unexpected media type: %q", result.Source.MediaType)
 	}
 }
@@ -614,7 +620,6 @@ func TestToContentBlocksMixed(t *testing.T) {
 	parts := []core.ContentPart{
 		core.TextPart{Text: "Look at these:"},
 		core.ImagePart{Source: core.URLSource{URL: "https://example.com/photo.jpg"}},
-		core.AudioPart{Source: core.DataSource{Data: "YXVkaW8=", MimeType: "audio/wav"}},
 		core.DocumentPart{Source: core.URLSource{URL: "https://example.com/doc.pdf"}},
 	}
 
@@ -622,8 +627,8 @@ func TestToContentBlocksMixed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(blocks) != 4 {
-		t.Fatalf("expected 4 blocks, got %d", len(blocks))
+	if len(blocks) != 3 {
+		t.Fatalf("expected 3 blocks, got %d", len(blocks))
 	}
 	if blocks[0].Type != "text" {
 		t.Fatalf("unexpected first block type: %q", blocks[0].Type)
@@ -631,11 +636,8 @@ func TestToContentBlocksMixed(t *testing.T) {
 	if blocks[1].Type != "image" {
 		t.Fatalf("unexpected second block type: %q", blocks[1].Type)
 	}
-	if blocks[2].Type != "audio" {
+	if blocks[2].Type != "document" {
 		t.Fatalf("unexpected third block type: %q", blocks[2].Type)
-	}
-	if blocks[3].Type != "document" {
-		t.Fatalf("unexpected fourth block type: %q", blocks[3].Type)
 	}
 }
 

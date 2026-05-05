@@ -1,14 +1,18 @@
 package claude
 
 type messageRequest struct {
-	Model       string      `json:"model"`
-	System      string      `json:"system,omitempty"`
-	Messages    []message   `json:"messages"`
-	MaxTokens   *int64      `json:"max_tokens,omitempty"`
-	Temperature *float64    `json:"temperature,omitempty"`
-	Tools       []tool      `json:"tools,omitempty"`
-	ToolChoice  *toolChoice `json:"tool_choice,omitempty"`
-	Stream      bool        `json:"stream,omitempty"`
+	Model        string         `json:"model"`
+	System       string         `json:"system,omitempty"`
+	Messages     []message      `json:"messages"`
+	MaxTokens    int64          `json:"max_tokens"`
+	Temperature  *float64       `json:"temperature,omitempty"`
+	TopP         *float64       `json:"top_p,omitempty"`
+	Metadata     map[string]any `json:"metadata,omitempty"`
+	OutputConfig any            `json:"output_config,omitempty"`
+	Tools        []tool         `json:"tools,omitempty"`
+	ToolChoice   *toolChoice    `json:"tool_choice,omitempty"`
+	Stream       bool           `json:"stream,omitempty"`
+	ModelOptions map[string]any `json:"-"`
 }
 
 type message struct {

@@ -1,11 +1,11 @@
 # go-ai
 
-A provider-agnostic AI SDK for Go, inspired by [TanStack AI](https://tanstack.com/ai) and [Vercel AI SDK](https://sdk.vercel.ai). Zero external dependencies -- only the Go standard library.
+A provider-agnostic AI SDK for Go. Zero external dependencies -- only the Go standard library.
 
 ## Features
 
 - **Provider-agnostic** -- swap between OpenAI, Claude, and Ollama with a single line change
-- **Chat completions** -- streaming and non-streaming
+- **Chat completions / responses** -- streaming and non-streaming text, including OpenAI `/chat/completions` and `/responses`
 - **Tool calling** -- server tools (auto-executed in an agentic loop) and client tools (returned to the caller)
 - **Structured output** -- build strict JSON schemas from Go structs, decode responses with generics
 - **Multimodal** -- text, images, audio, and documents as message content
@@ -49,7 +49,8 @@ import (
 func main() {
 	adapter := openai.New("gpt-4o") // reads OPENAI_API_KEY from env
 
-	result, err := core.Chat(context.Background(), adapter, &core.ChatParams{
+	result, err := core.Chat(context.Background(), core.TextOptions{
+		Adapter: adapter,
 		Messages: []core.MessageUnion{
 			core.TextMessagePart{Role: core.RoleUser, Content: "What is the capital of France?"},
 		},
@@ -69,7 +70,8 @@ import "github.com/m43i/go-ai/claude"
 
 adapter := claude.New("claude-sonnet-4-20250514") // reads ANTHROPIC_API_KEY from env
 
-result, err := core.Chat(context.Background(), adapter, &core.ChatParams{
+result, err := core.Chat(context.Background(), core.TextOptions{
+	Adapter: adapter,
 	Messages: []core.MessageUnion{
 		core.TextMessagePart{Role: core.RoleUser, Content: "Explain quantum computing in one paragraph."},
 	},
@@ -83,7 +85,8 @@ import "github.com/m43i/go-ai/ollama"
 
 adapter := ollama.New("llama3.2") // reads OLLAMA_HOST, defaults to http://localhost:11434
 
-result, err := core.Chat(context.Background(), adapter, &core.ChatParams{
+result, err := core.Chat(context.Background(), core.TextOptions{
+	Adapter: adapter,
 	Messages: []core.MessageUnion{
 		core.TextMessagePart{Role: core.RoleUser, Content: "Explain quantum computing in one paragraph."},
 	},
@@ -93,7 +96,8 @@ result, err := core.Chat(context.Background(), adapter, &core.ChatParams{
 ### Streaming
 
 ```go
-chunks, err := core.ChatStream(context.Background(), adapter, &core.ChatParams{
+chunks, err := core.ChatStream(context.Background(), core.TextOptions{
+	Adapter: adapter,
 	Messages: []core.MessageUnion{
 		core.TextMessagePart{Role: core.RoleUser, Content: "Write a haiku about Go."},
 	},
@@ -125,12 +129,39 @@ for chunk := range chunks {
 
 `chunk.Delta` is always the incremental token delta for the chunk type. `chunk.Content` and `chunk.Reasoning` are accumulated snapshots up to that chunk.
 
+### Provider Options
+
+Common text options are passed directly on `core.TextOptions`. Provider-specific options go in `ModelOptions`.
+
+```go
+adapter := openai.New("gpt-4o") // defaults to /chat/completions
+
+maxTokens := int64(1000)
+temperature := 0.7
+
+result, err := core.Chat(context.Background(), core.TextOptions{
+	Adapter:       adapter,
+	SystemPrompts: []string{"You are concise."},
+	Messages: []core.MessageUnion{
+		core.TextMessagePart{Role: core.RoleUser, Content: "Return JSON with a greeting."},
+	},
+	MaxTokens:   &maxTokens,
+	Temperature: &temperature,
+	ModelOptions: map[string]any{
+		"responseFormat": map[string]any{"type": "json_object"},
+	},
+})
+```
+
+OpenAI defaults to `/chat/completions`. Use `openai.WithResponsesAPI()` for `/responses` or `openai.WithChatCompletionsAPI()` to select `/chat/completions` explicitly. `ModelOptions` keys may use Go-friendly camelCase (`responseFormat`) or provider JSON names (`response_format`).
+
 ### Server Tools (Agentic Loop)
 
 Server tools are automatically executed by the adapter. The model calls the tool, the adapter runs your handler, and feeds the result back -- up to `MaxAgenticLoops` iterations (default 8).
 
 ```go
-result, err := core.Chat(context.Background(), adapter, &core.ChatParams{
+result, err := core.Chat(context.Background(), core.TextOptions{
+	Adapter: adapter,
 	Messages: []core.MessageUnion{
 		core.TextMessagePart{Role: core.RoleUser, Content: "What is the weather in Berlin?"},
 	},
@@ -188,7 +219,8 @@ conversation := []core.MessageUnion{
 	core.TextMessagePart{Role: core.RoleUser, Content: "Find the latest Go release and ask me if I want details."},
 }
 
-result, err := core.Chat(context.Background(), adapter, &core.ChatParams{
+result, err := core.Chat(context.Background(), core.TextOptions{
+	Adapter:  adapter,
 	Messages: conversation,
 	Tools:    tools,
 })
@@ -217,7 +249,8 @@ for len(result.ToolCalls) > 0 {
 		})
 	}
 
-	result, err = core.Chat(context.Background(), adapter, &core.ChatParams{
+	result, err = core.Chat(context.Background(), core.TextOptions{
+		Adapter:  adapter,
 		Messages: conversation,
 		Tools:    tools,
 	})
@@ -245,7 +278,8 @@ if err != nil {
 	panic(err)
 }
 
-result, err := core.Chat(context.Background(), adapter, &core.ChatParams{
+result, err := core.Chat(context.Background(), core.TextOptions{
+	Adapter: adapter,
 	Messages: []core.MessageUnion{
 		core.TextMessagePart{Role: core.RoleUser, Content: "Analyze the sentiment: 'Go is a great language!'"},
 	},
@@ -268,7 +302,8 @@ fmt.Printf("Sentiment: %s (%.0f%% confidence)\n", sentiment.Sentiment, sentiment
 Send images, audio, or documents alongside text.
 
 ```go
-result, err := core.Chat(context.Background(), adapter, &core.ChatParams{
+result, err := core.Chat(context.Background(), core.TextOptions{
+	Adapter: adapter,
 	Messages: []core.MessageUnion{
 		core.ContentMessagePart{
 			Role: core.RoleUser,
@@ -350,7 +385,8 @@ fmt.Println(result.Text)
 Extract chain-of-thought reasoning from models that support it.
 
 ```go
-result, err := core.Chat(context.Background(), adapter, &core.ChatParams{
+result, err := core.Chat(context.Background(), core.TextOptions{
+	Adapter: adapter,
 	Messages: []core.MessageUnion{
 		core.TextMessagePart{Role: core.RoleUser, Content: "Solve: what is 127 * 843?"},
 	},

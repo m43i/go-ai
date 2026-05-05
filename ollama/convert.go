@@ -14,7 +14,14 @@ func toMessages(params *core.ChatParams) ([]message, error) {
 		return nil, errors.New("ollama: chat params are required")
 	}
 
-	out := make([]message, 0, len(params.Messages))
+	out := make([]message, 0, len(params.SystemPrompts)+len(params.Messages))
+	for _, prompt := range params.SystemPrompts {
+		prompt = strings.TrimSpace(prompt)
+		if prompt != "" {
+			out = append(out, message{Role: core.RoleSystem, Content: prompt})
+		}
+	}
+
 	for i, union := range params.Messages {
 		msg, err := toMessage(union)
 		if err != nil {
@@ -448,6 +455,9 @@ func maxTokens(params *core.ChatParams) *int64 {
 	if params == nil {
 		return nil
 	}
+	if params.MaxTokens != nil && *params.MaxTokens > 0 {
+		return params.MaxTokens
+	}
 	if params.MaxOutputTokens != nil && *params.MaxOutputTokens > 0 {
 		return params.MaxOutputTokens
 	}
@@ -476,6 +486,15 @@ func requestOptions(params *core.ChatParams) map[string]any {
 	}
 	if temp := temperature(params); temp != nil {
 		options["temperature"] = *temp
+	}
+	if params.TopP != nil {
+		options["top_p"] = *params.TopP
+	}
+	for key, value := range params.ModelOptions {
+		key = strings.TrimSpace(key)
+		if key != "" && value != nil {
+			options[key] = value
+		}
 	}
 
 	if len(options) == 0 {

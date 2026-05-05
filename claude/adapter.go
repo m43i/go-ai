@@ -14,6 +14,7 @@ const (
 	defaultBaseURL         = "https://api.anthropic.com/v1"
 	defaultMaxAgenticLoops = 8
 	defaultHTTPTimeout     = 5 * time.Minute
+	defaultVersion         = "2023-06-01"
 	envAnthropicAPIKey     = "ANTHROPIC_API_KEY"
 	envClaudeAPIKey        = "CLAUDE_API_KEY"
 )
@@ -37,10 +38,11 @@ type Option func(*Adapter)
 // If no API key is provided via options, New reads ANTHROPIC_API_KEY and then CLAUDE_API_KEY.
 func New(model string, opts ...Option) *Adapter {
 	adapter := &Adapter{
-		APIKey:     resolveAPIKey(),
-		Model:      strings.TrimSpace(model),
-		BaseURL:    defaultBaseURL,
-		HTTPClient: &http.Client{Timeout: defaultHTTPTimeout},
+		APIKey:           resolveAPIKey(),
+		Model:            strings.TrimSpace(model),
+		BaseURL:          defaultBaseURL,
+		AnthropicVersion: defaultVersion,
+		HTTPClient:       &http.Client{Timeout: defaultHTTPTimeout},
 	}
 
 	for _, opt := range opts {
@@ -147,6 +149,9 @@ func (a *Adapter) baseURL() string {
 }
 
 func (a *Adapter) version() string {
+	if strings.TrimSpace(a.AnthropicVersion) == "" {
+		return defaultVersion
+	}
 	return strings.TrimSpace(a.AnthropicVersion)
 }
 

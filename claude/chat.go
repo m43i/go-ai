@@ -145,7 +145,7 @@ func (a *Adapter) ChatStream(ctx context.Context, params *core.ChatParams) (<-ch
 		request.Stream = true
 
 		url := strings.TrimRight(a.baseURL(), "/") + "/messages"
-		body, err := json.Marshal(request)
+		body, err := marshalMessageRequest(&request)
 		if err != nil {
 			out <- core.StreamChunk{Type: core.StreamChunkError, Error: fmt.Sprintf("claude: marshal stream request: %v", err)}
 			return
@@ -264,11 +264,15 @@ func (a *Adapter) buildRequestTemplate(params *core.ChatParams) (messageRequest,
 	}
 
 	request := messageRequest{
-		Model:       a.Model,
-		System:      applyOutputInstruction(system, paramsOutput(params)),
-		Tools:       tools,
-		MaxTokens:   maxTokens(params),
-		Temperature: temperature(params),
+		Model:        a.Model,
+		System:       system,
+		Tools:        tools,
+		MaxTokens:    maxTokens(params),
+		Temperature:  temperature(params),
+		TopP:         topP(params),
+		Metadata:     metadata(params),
+		OutputConfig: outputConfig(params),
+		ModelOptions: modelOptions(params),
 	}
 
 	if len(tools) > 0 {
@@ -279,7 +283,7 @@ func (a *Adapter) buildRequestTemplate(params *core.ChatParams) (messageRequest,
 }
 
 func (a *Adapter) postMessages(ctx context.Context, request *messageRequest) (*messageResponse, error) {
-	body, err := json.Marshal(request)
+	body, err := marshalMessageRequest(request)
 	if err != nil {
 		return nil, fmt.Errorf("claude: marshal request: %w", err)
 	}
@@ -312,13 +316,6 @@ func (a *Adapter) postMessages(ctx context.Context, request *messageRequest) (*m
 	}
 
 	return &response, nil
-}
-
-func paramsOutput(params *core.ChatParams) *core.Schema {
-	if params == nil {
-		return nil
-	}
-	return params.Output
 }
 
 func cloneCoreMessages(params *core.ChatParams) []core.MessageUnion {

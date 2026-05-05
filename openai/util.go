@@ -7,7 +7,71 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"unicode"
 )
+
+func marshalWithModelOptions(request any, options map[string]any) ([]byte, error) {
+	body, err := json.Marshal(request)
+	if err != nil {
+		return nil, err
+	}
+	if len(options) == 0 {
+		return body, nil
+	}
+
+	var envelope map[string]any
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, err
+	}
+	for key, value := range options {
+		key = strings.TrimSpace(key)
+		if key == "" || value == nil {
+			continue
+		}
+		envelope[jsonKey(key)] = value
+	}
+
+	return json.Marshal(envelope)
+}
+
+func jsonKey(key string) string {
+	switch key {
+	case "maxTokens":
+		return "max_output_tokens"
+	case "maxCompletionTokens":
+		return "max_completion_tokens"
+	case "responseFormat":
+		return "response_format"
+	case "toolChoice":
+		return "tool_choice"
+	case "topP":
+		return "top_p"
+	case "logitBias":
+		return "logit_bias"
+	case "streamOptions":
+		return "stream_options"
+	}
+
+	if strings.Contains(key, "_") {
+		return key
+	}
+	return camelToSnake(key)
+}
+
+func camelToSnake(value string) string {
+	var builder strings.Builder
+	for i, r := range value {
+		if unicode.IsUpper(r) {
+			if i > 0 {
+				builder.WriteByte('_')
+			}
+			builder.WriteRune(unicode.ToLower(r))
+			continue
+		}
+		builder.WriteRune(r)
+	}
+	return builder.String()
+}
 
 func parseToolArguments(raw string) (any, error) {
 	raw = strings.TrimSpace(raw)

@@ -14,7 +14,15 @@ func toChatMessages(params *core.ChatParams) ([]chatMessage, error) {
 		return nil, errors.New("openai: chat params are required")
 	}
 
-	out := make([]chatMessage, 0, len(params.Messages))
+	out := make([]chatMessage, 0, len(params.SystemPrompts)+len(params.Messages))
+	for _, prompt := range params.SystemPrompts {
+		prompt = strings.TrimSpace(prompt)
+		if prompt == "" {
+			continue
+		}
+		out = append(out, chatMessage{Role: core.RoleSystem, Content: prompt})
+	}
+
 	for i, union := range params.Messages {
 		message, err := toChatMessage(union)
 		if err != nil {
@@ -24,6 +32,165 @@ func toChatMessages(params *core.ChatParams) ([]chatMessage, error) {
 	}
 
 	return out, nil
+}
+
+func toResponseInput(params *core.ChatParams) ([]responseInputItem, string, error) {
+	if params == nil {
+		return nil, "", errors.New("openai: chat params are required")
+	}
+
+	instructions := strings.TrimSpace(strings.Join(params.SystemPrompts, "\n"))
+	out := make([]responseInputItem, 0, len(params.Messages)+8)
+	for i, union := range params.Messages {
+		items, err := toResponseInputItems(union)
+		if err != nil {
+			return nil, "", fmt.Errorf("openai: invalid message at index %d: %w", i, err)
+		}
+		out = append(out, items...)
+	}
+
+	return out, instructions, nil
+}
+
+func toResponseInputItems(union core.MessageUnion) ([]responseInputItem, error) {
+	switch msg := union.(type) {
+	case core.TextMessagePart:
+		return newTextResponseInput(msg.Role, msg.Content)
+	case *core.TextMessagePart:
+		if msg == nil {
+			return nil, errors.New("text message is nil")
+		}
+		return newTextResponseInput(msg.Role, msg.Content)
+
+	case core.ContentMessagePart:
+		return newContentResponseInput(msg.Role, msg.Parts)
+	case *core.ContentMessagePart:
+		if msg == nil {
+			return nil, errors.New("content message is nil")
+		}
+		return newContentResponseInput(msg.Role, msg.Parts)
+
+	case core.AssistantToolCallMessagePart:
+		return newToolCallResponseInput(msg.ToolCalls)
+	case *core.AssistantToolCallMessagePart:
+		if msg == nil {
+			return nil, errors.New("assistant tool call message is nil")
+		}
+		return newToolCallResponseInput(msg.ToolCalls)
+
+	case core.ToolResultMessagePart:
+		return newToolResultResponseInput(msg.ToolCallID, msg.Content)
+	case *core.ToolResultMessagePart:
+		if msg == nil {
+			return nil, errors.New("tool result message is nil")
+		}
+		return newToolResultResponseInput(msg.ToolCallID, msg.Content)
+	}
+
+	return nil, fmt.Errorf("unsupported message type %T", union)
+}
+
+func newTextResponseInput(role, content string) ([]responseInputItem, error) {
+	role = strings.TrimSpace(role)
+	if role == "" {
+		return nil, errors.New("text message role is required")
+	}
+	if role == core.RoleToolCall || role == core.RoleToolResult {
+		return nil, fmt.Errorf("text message role must not be %q or %q", core.RoleToolCall, core.RoleToolResult)
+	}
+
+	return []responseInputItem{{Role: role, Content: content}}, nil
+}
+
+func newContentResponseInput(role string, parts []core.ContentPart) ([]responseInputItem, error) {
+	role = strings.TrimSpace(role)
+	if role == "" {
+		return nil, errors.New("content message role is required")
+	}
+	contentParts, err := toResponseContentParts(parts)
+	if err != nil {
+		return nil, err
+	}
+	return []responseInputItem{{Role: role, Content: contentParts}}, nil
+}
+
+func toResponseContentParts(parts []core.ContentPart) ([]responseContentPart, error) {
+	if len(parts) == 0 {
+		return nil, errors.New("content message must include at least one content part")
+	}
+
+	out := make([]responseContentPart, 0, len(parts))
+	for i, part := range parts {
+		switch typed := part.(type) {
+		case core.TextPart:
+			out = append(out, responseContentPart{Type: "input_text", Text: typed.Text})
+		case *core.TextPart:
+			if typed == nil {
+				return nil, fmt.Errorf("content part at index %d: text part is nil", i)
+			}
+			out = append(out, responseContentPart{Type: "input_text", Text: typed.Text})
+		case core.ImagePart:
+			item, err := responseImageContentPart(typed.Source)
+			if err != nil {
+				return nil, fmt.Errorf("content part at index %d: %w", i, err)
+			}
+			out = append(out, item)
+		case *core.ImagePart:
+			if typed == nil {
+				return nil, fmt.Errorf("content part at index %d: image part is nil", i)
+			}
+			item, err := responseImageContentPart(typed.Source)
+			if err != nil {
+				return nil, fmt.Errorf("content part at index %d: %w", i, err)
+			}
+			out = append(out, item)
+		default:
+			return nil, fmt.Errorf("content part at index %d: unsupported content part type %T", i, part)
+		}
+	}
+
+	return out, nil
+}
+
+func responseImageContentPart(source core.Source) (responseContentPart, error) {
+	url, err := imageURLFromSource(source)
+	if err != nil {
+		return responseContentPart{}, err
+	}
+	return responseContentPart{Type: "input_image", ImageURL: url}, nil
+}
+
+func newToolCallResponseInput(calls []core.ToolCall) ([]responseInputItem, error) {
+	if len(calls) == 0 {
+		return nil, errors.New("assistant tool call message must include at least one tool call")
+	}
+
+	out := make([]responseInputItem, 0, len(calls))
+	for i, call := range calls {
+		name := strings.TrimSpace(call.Name)
+		if name == "" {
+			return nil, fmt.Errorf("tool call at index %d is missing a name", i)
+		}
+		id := strings.TrimSpace(call.ID)
+		if id == "" {
+			id = fmt.Sprintf("call_%d", i+1)
+		}
+		arguments, err := stringifyToolArguments(call.Arguments)
+		if err != nil {
+			return nil, fmt.Errorf("tool call %q arguments: %w", name, err)
+		}
+		out = append(out, responseInputItem{Type: "function_call", CallID: id, Name: name, Arguments: arguments})
+	}
+
+	return out, nil
+}
+
+func newToolResultResponseInput(toolCallID, content string) ([]responseInputItem, error) {
+	toolCallID = strings.TrimSpace(toolCallID)
+	if toolCallID == "" {
+		return nil, errors.New("tool result message tool call ID is required")
+	}
+	return []responseInputItem{{Type: "function_call_output", CallID: toolCallID, Output: content}}, nil
 }
 
 func toChatMessage(union core.MessageUnion) (chatMessage, error) {
@@ -540,6 +707,9 @@ func maxTokens(params *core.ChatParams) *int64 {
 	if params == nil {
 		return nil
 	}
+	if params.MaxTokens != nil {
+		return params.MaxTokens
+	}
 	if params.MaxOutputTokens != nil {
 		return params.MaxOutputTokens
 	}
@@ -555,6 +725,27 @@ func temperature(params *core.ChatParams) *float64 {
 		return nil
 	}
 	return params.Temperature
+}
+
+func topP(params *core.ChatParams) *float64 {
+	if params == nil {
+		return nil
+	}
+	return params.TopP
+}
+
+func metadata(params *core.ChatParams) map[string]any {
+	if params == nil || len(params.Metadata) == 0 {
+		return nil
+	}
+	return params.Metadata
+}
+
+func modelOptions(params *core.ChatParams) map[string]any {
+	if params == nil || len(params.ModelOptions) == 0 {
+		return nil
+	}
+	return params.ModelOptions
 }
 
 func reasoningEffort(params *core.ChatParams) string {

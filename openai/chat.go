@@ -21,6 +21,9 @@ func (a *Adapter) Chat(ctx context.Context, params *core.ChatParams) (*core.Chat
 	if err := a.validate(); err != nil {
 		return nil, err
 	}
+	if a.textEndpoint() == EndpointResponses {
+		return a.chatResponses(ctx, params)
+	}
 
 	requestTemplate, messages, serverTools, clientTools, maxLoopCount, err := a.buildRequestTemplate(params)
 	if err != nil {
@@ -141,6 +144,9 @@ func (a *Adapter) Chat(ctx context.Context, params *core.ChatParams) (*core.Chat
 func (a *Adapter) ChatStream(ctx context.Context, params *core.ChatParams) (<-chan core.StreamChunk, error) {
 	if err := a.validate(); err != nil {
 		return nil, err
+	}
+	if a.textEndpoint() == EndpointResponses {
+		return a.chatResponsesStream(ctx, params)
 	}
 
 	request, messages, serverTools, clientTools, _, err := a.buildRequestTemplate(params)
@@ -327,7 +333,10 @@ func (a *Adapter) buildRequestTemplate(params *core.ChatParams) (chatCompletionR
 		Tools:               tools,
 		MaxCompletionTokens: maxTokens(params),
 		Temperature:         temperature(params),
+		TopP:                topP(params),
+		Metadata:            metadata(params),
 		ReasoningEffort:     reasoningEffort(params),
+		ModelOptions:        modelOptions(params),
 	}
 
 	if len(tools) > 0 {
@@ -342,7 +351,7 @@ func (a *Adapter) buildRequestTemplate(params *core.ChatParams) (chatCompletionR
 }
 
 func (a *Adapter) postChatCompletions(ctx context.Context, request *chatCompletionRequest) (*chatCompletionResponse, error) {
-	body, err := json.Marshal(request)
+	body, err := marshalWithModelOptions(request, request.ModelOptions)
 	if err != nil {
 		return nil, fmt.Errorf("openai: marshal request: %w", err)
 	}

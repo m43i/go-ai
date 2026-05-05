@@ -14,12 +14,16 @@ const (
 	defaultBaseURL         = "https://api.openai.com/v1"
 	defaultMaxAgenticLoops = 8
 	defaultHTTPTimeout     = 5 * time.Minute
+
+	EndpointChatCompletions = "chat_completions"
+	EndpointResponses       = "responses"
 )
 
 type Adapter struct {
 	APIKey     string
 	Model      string
 	BaseURL    string
+	Endpoint   string
 	HTTPClient *http.Client
 }
 
@@ -40,6 +44,7 @@ func New(model string, opts ...Option) *Adapter {
 		APIKey:     strings.TrimSpace(os.Getenv("OPENAI_API_KEY")),
 		Model:      strings.TrimSpace(model),
 		BaseURL:    defaultBaseURL,
+		Endpoint:   EndpointChatCompletions,
 		HTTPClient: &http.Client{Timeout: defaultHTTPTimeout},
 	}
 
@@ -51,6 +56,28 @@ func New(model string, opts ...Option) *Adapter {
 	}
 
 	return adapter
+}
+
+// WithResponsesAPI sends chat requests through OpenAI's /responses endpoint.
+func WithResponsesAPI() Option {
+	return WithEndpoint(EndpointResponses)
+}
+
+// WithChatCompletionsAPI sends chat requests through OpenAI's /chat/completions endpoint.
+func WithChatCompletionsAPI() Option {
+	return WithEndpoint(EndpointChatCompletions)
+}
+
+// WithEndpoint selects the OpenAI text endpoint used by Chat and ChatStream.
+func WithEndpoint(endpoint string) Option {
+	return func(adapter *Adapter) {
+		switch strings.TrimSpace(endpoint) {
+		case EndpointChatCompletions, "chat-completions", "/chat/completions":
+			adapter.Endpoint = EndpointChatCompletions
+		case EndpointResponses, "/responses":
+			adapter.Endpoint = EndpointResponses
+		}
+	}
 }
 
 // WithAPIKey sets the API key used by the adapter.
@@ -134,4 +161,11 @@ func (a *Adapter) baseURL() string {
 		return defaultBaseURL
 	}
 	return a.BaseURL
+}
+
+func (a *Adapter) textEndpoint() string {
+	if strings.TrimSpace(a.Endpoint) == EndpointResponses {
+		return EndpointResponses
+	}
+	return EndpointChatCompletions
 }

@@ -1,21 +1,72 @@
 package core
 
-import "context"
+import (
+	"context"
+	"errors"
+	"fmt"
+)
 
 // Chat sends a non-streaming chat request through the provided adapter.
 //
 // Preferred usage is to use core and add a provider adapter there; this
 // helper exists for direct adapter calls.
-func Chat(ctx context.Context, adapter TextAdapter, params *ChatParams) (*ChatResult, error) {
-	return adapter.Chat(ctx, params)
+func Chat(ctx context.Context, request any, params ...*ChatParams) (*ChatResult, error) {
+	adapter, chatParams, err := resolveTextRequest(request, params...)
+	if err != nil {
+		return nil, err
+	}
+	return adapter.Chat(ctx, chatParams)
 }
 
 // ChatStream sends a streaming chat request through the provided adapter.
 //
 // Preferred usage is to use core and add a provider adapter there; this
 // helper exists for direct adapter calls.
-func ChatStream(ctx context.Context, adapter TextAdapter, params *ChatParams) (<-chan StreamChunk, error) {
-	return adapter.ChatStream(ctx, params)
+func ChatStream(ctx context.Context, request any, params ...*ChatParams) (<-chan StreamChunk, error) {
+	adapter, chatParams, err := resolveTextRequest(request, params...)
+	if err != nil {
+		return nil, err
+	}
+	return adapter.ChatStream(ctx, chatParams)
+}
+
+func resolveTextRequest(request any, params ...*ChatParams) (TextAdapter, *ChatParams, error) {
+	switch typed := request.(type) {
+	case TextAdapter:
+		if typed == nil {
+			return nil, nil, errors.New("core: text adapter is required")
+		}
+		if len(params) == 0 {
+			return typed, nil, nil
+		}
+		if len(params) > 1 {
+			return nil, nil, errors.New("core: only one ChatParams value is supported")
+		}
+		return typed, params[0], nil
+
+	case TextOptions:
+		if typed.Adapter == nil {
+			return nil, nil, errors.New("core: text options adapter is required")
+		}
+		if len(params) > 0 {
+			return nil, nil, errors.New("core: ChatParams cannot be combined with TextOptions")
+		}
+		return typed.Adapter, (&typed).chatParams(), nil
+
+	case *TextOptions:
+		if typed == nil {
+			return nil, nil, errors.New("core: text options are required")
+		}
+		if typed.Adapter == nil {
+			return nil, nil, errors.New("core: text options adapter is required")
+		}
+		if len(params) > 0 {
+			return nil, nil, errors.New("core: ChatParams cannot be combined with TextOptions")
+		}
+		return typed.Adapter, typed.chatParams(), nil
+	}
+
+	return nil, nil, fmt.Errorf("core: unsupported text request type %T", request)
 }
 
 // Embed creates a single embedding vector through the provided adapter.

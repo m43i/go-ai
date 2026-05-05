@@ -45,6 +45,39 @@ func TestChatDelegatesToAdapter(t *testing.T) {
 	}
 }
 
+func TestChatAcceptsTextOptions(t *testing.T) {
+	expected := &ChatResult{Text: "ok"}
+	adapter := textAdapterStub{
+		chatFn: func(_ context.Context, params *ChatParams) (*ChatResult, error) {
+			if params == nil || len(params.Messages) != 1 {
+				t.Fatalf("unexpected params: %#v", params)
+			}
+			if params.ModelOptions["responseFormat"] == nil {
+				t.Fatalf("expected model options to be forwarded: %#v", params.ModelOptions)
+			}
+			return expected, nil
+		},
+		chatStreamFn: func(context.Context, *ChatParams) (<-chan StreamChunk, error) {
+			t.Fatal("chat stream should not be called")
+			return nil, nil
+		},
+	}
+
+	result, err := Chat(context.Background(), TextOptions{
+		Adapter: adapter,
+		Messages: []MessageUnion{
+			TextMessagePart{Role: RoleUser, Content: "hello"},
+		},
+		ModelOptions: map[string]any{"responseFormat": map[string]any{"type": "json_object"}},
+	})
+	if err != nil {
+		t.Fatalf("chat returned error: %v", err)
+	}
+	if result != expected {
+		t.Fatalf("expected result pointer %#v, got %#v", expected, result)
+	}
+}
+
 func TestChatStreamDelegatesToAdapter(t *testing.T) {
 	expected := make(chan StreamChunk, 1)
 	expected <- StreamChunk{Type: StreamChunkDone, FinishReason: "stop"}

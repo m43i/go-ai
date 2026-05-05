@@ -3,15 +3,96 @@ package openai
 import "encoding/json"
 
 type chatCompletionRequest struct {
-	Model               string        `json:"model"`
-	Messages            []chatMessage `json:"messages"`
-	Tools               []chatTool    `json:"tools,omitempty"`
-	ToolChoice          string        `json:"tool_choice,omitempty"`
-	ResponseFormat      any           `json:"response_format,omitempty"`
-	MaxCompletionTokens *int64        `json:"max_completion_tokens,omitempty"`
-	Temperature         *float64      `json:"temperature,omitempty"`
-	ReasoningEffort     string        `json:"reasoning_effort,omitempty"`
-	Stream              bool          `json:"stream,omitempty"`
+	Model               string         `json:"model"`
+	Messages            []chatMessage  `json:"messages"`
+	Tools               []chatTool     `json:"tools,omitempty"`
+	ToolChoice          string         `json:"tool_choice,omitempty"`
+	ResponseFormat      any            `json:"response_format,omitempty"`
+	MaxCompletionTokens *int64         `json:"max_completion_tokens,omitempty"`
+	Temperature         *float64       `json:"temperature,omitempty"`
+	TopP                *float64       `json:"top_p,omitempty"`
+	Metadata            map[string]any `json:"metadata,omitempty"`
+	ReasoningEffort     string         `json:"reasoning_effort,omitempty"`
+	Stream              bool           `json:"stream,omitempty"`
+	ModelOptions        map[string]any `json:"-"`
+}
+
+type responsesRequest struct {
+	Model           string              `json:"model"`
+	Input           []responseInputItem `json:"input"`
+	Instructions    string              `json:"instructions,omitempty"`
+	Tools           []chatTool          `json:"tools,omitempty"`
+	ToolChoice      string              `json:"tool_choice,omitempty"`
+	Text            any                 `json:"text,omitempty"`
+	MaxOutputTokens *int64              `json:"max_output_tokens,omitempty"`
+	Temperature     *float64            `json:"temperature,omitempty"`
+	TopP            *float64            `json:"top_p,omitempty"`
+	Metadata        map[string]any      `json:"metadata,omitempty"`
+	Reasoning       map[string]any      `json:"reasoning,omitempty"`
+	Stream          bool                `json:"stream,omitempty"`
+	ModelOptions    map[string]any      `json:"-"`
+}
+
+type responseInputItem struct {
+	Type      string `json:"type,omitempty"`
+	Role      string `json:"role,omitempty"`
+	Content   any    `json:"content,omitempty"`
+	CallID    string `json:"call_id,omitempty"`
+	Output    string `json:"output,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+}
+
+type responseContentPart struct {
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	ImageURL string `json:"image_url,omitempty"`
+}
+
+type responsesResponse struct {
+	Output            []responseOutputItem `json:"output"`
+	OutputText        string               `json:"output_text,omitempty"`
+	Usage             *responsesUsage      `json:"usage,omitempty"`
+	Status            string               `json:"status,omitempty"`
+	IncompleteDetails *incompleteDetails   `json:"incomplete_details,omitempty"`
+	RawOutput         []json.RawMessage    `json:"-"`
+}
+
+type responseOutputItem struct {
+	ID        string           `json:"id,omitempty"`
+	Type      string           `json:"type"`
+	Role      string           `json:"role,omitempty"`
+	Content   []map[string]any `json:"content,omitempty"`
+	CallID    string           `json:"call_id,omitempty"`
+	Name      string           `json:"name,omitempty"`
+	Arguments string           `json:"arguments,omitempty"`
+	Status    string           `json:"status,omitempty"`
+}
+
+type responsesUsage struct {
+	InputTokens         int64                `json:"input_tokens"`
+	OutputTokens        int64                `json:"output_tokens"`
+	TotalTokens         int64                `json:"total_tokens"`
+	ReasoningTokens     int64                `json:"reasoning_tokens,omitempty"`
+	OutputTokensDetails *outputTokensDetails `json:"output_tokens_details,omitempty"`
+}
+
+type outputTokensDetails struct {
+	ReasoningTokens int64 `json:"reasoning_tokens,omitempty"`
+}
+
+type incompleteDetails struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+type responsesStreamEvent struct {
+	Type         string              `json:"type"`
+	Delta        string              `json:"delta,omitempty"`
+	Text         string              `json:"text,omitempty"`
+	Response     *responsesResponse  `json:"response,omitempty"`
+	Item         *responseOutputItem `json:"item,omitempty"`
+	OutputIndex  int                 `json:"output_index,omitempty"`
+	ContentIndex int                 `json:"content_index,omitempty"`
 }
 
 type chatMessage struct {
